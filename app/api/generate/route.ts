@@ -1,33 +1,37 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { ActivitySchema } from "../../../lib/schemas";
+import { ActivitySchema, GeneratedActivity } from "@/lib/schemas";
+import { validateActivityContent } from "@/lib/validator";
 
 // Initialize the Anthropic client using your server environment variable
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Mock response for FAKE_MODE testing
-const MOCK_MULTIPLE_CHOICE = {
-  type: "multiple_choice",
+// Mock response for FAKE_MODE testing matching the new database contract
+const MOCK_MULTIPLE_CHOICE_ACTIVITY: GeneratedActivity = {
   title: "Photosynthesis Overview",
-  instructions: "Select the correct answer for each question.",
-  questions: [
-    {
-      id: "q1",
-      question: "What primary gas do plants absorb during photosynthesis?",
-      options: ["Carbon Dioxide", "Oxygen", "Nitrogen", "Hydrogen"],
-      correctAnswerIndex: 0,
-      explanation: "Plants absorb Carbon Dioxide (CO2) from the air to make sugars."
-    },
-    {
-      id: "q2",
-      question: "Where in plant cells does photosynthesis take place?",
-      options: ["Mitochondria", "Nucleus", "Chloroplasts", "Cell Wall"],
-      correctAnswerIndex: 2,
-      explanation: "Photosynthesis occurs inside chloroplasts, which contain chlorophyll."
-    }
-  ]
+  type: "multiple-choice",
+  is_published: false,
+  content: {
+    instructions: "Select the correct answer for each question.",
+    questions: [
+      {
+        id: "q1",
+        question: "What primary gas do plants absorb during photosynthesis?",
+        options: ["Carbon Dioxide", "Oxygen", "Nitrogen", "Hydrogen"],
+        correctAnswerIndex: 0,
+        explanation: "Plants absorb Carbon Dioxide (CO2) from the air to make sugars."
+      },
+      {
+        id: "q2",
+        question: "Where in plant cells does photosynthesis take place?",
+        options: ["Mitochondria", "Nucleus", "Chloroplasts", "Cell Wall"],
+        correctAnswerIndex: 2,
+        explanation: "Photosynthesis occurs inside chloroplasts, which contain chlorophyll."
+      }
+    ]
+  }
 };
 
 export async function POST(request: Request) {
@@ -39,10 +43,10 @@ export async function POST(request: Request) {
     const isFakeMode = process.env.FAKE_MODE !== "false";
 
     if (isFakeMode) {
-      console.log("[FAKE MODE] Returning mock activity data.");
+      console.log("[FAKE MODE] Returning mock activity data matching database contract.");
       return NextResponse.json({
         success: true,
-        data: MOCK_MULTIPLE_CHOICE,
+        data: MOCK_MULTIPLE_CHOICE_ACTIVITY,
         isFakeMode: true,
       });
     }
@@ -55,11 +59,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call Claude Sonnet 5.5 for real generation
+    // Call Claude for real generation matching the requested hyphenated type
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022", // Update to claude-sonnet-5-5 as specified in brief
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 2000,
-      system: `You are an expert educational AI. Generate JSON content for activity type: "${type}". Ensure the output strictly conforms to the requested format.`,
+      system: `You are an expert educational AI. Generate a JSON object with fields: "title", "type" (must be exactly "${type}"), "is_published" (set to false), and "content" containing the structural details for this activity type. Ensure valid JSON output with zero HTML tags.`,
       messages: [
         {
           role: "user",
@@ -74,18 +78,29 @@ export async function POST(request: Request) {
     // Parse JSON safely
     const parsedData = JSON.parse(responseText);
 
-    // Validate the output against your Zod schema[cite: 3]
-    const validationResult = ActivitySchema.safeParse(parsedData);
-    if (!validationResult.success) {
+    // 1. Validate the output shape and default values using Zod[cite: 3]
+    const schemaValidation = ActivitySchema.safeParse(parsedData);
+    if (!schemaValidation.success) {
       return NextResponse.json(
-        { error: "AI generated invalid schema shape", details: validationResult.error.format() },
+        { error: "AI generated invalid schema shape", details: schemaValidation.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const activityData = schemaValidation.data;
+
+    // 2. Run custom business logic validation (HTML checks, duplicate options, etc.)[cite: 3]
+    const contentValidation = validateActivityContent(activityData);
+    if (!contentValidation.isValid) {
+      return NextResponse.json(
+        { error: "Content validation failed", message: contentValidation.message },
         { status: 400 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      data: validationResult.data,
+      data: activityData,
       isFakeMode: false,
     });
 
