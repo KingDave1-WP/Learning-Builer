@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import type { ActivityContent } from "../../lib/schemas";
+import type { z } from "zod";
+import type { FlashcardsContentSchema } from "../../lib/schemas";
 
-type Content = Extract<ActivityContent, { type: "flashcards" }>;
+type Content = z.infer<typeof FlashcardsContentSchema>;
 
 export default function Flashcards({ content }: { content: Content }) {
   const [index, setIndex] = useState(0);

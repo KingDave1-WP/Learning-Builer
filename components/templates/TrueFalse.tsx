@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import type { ActivityContent } from "../../lib/schemas";
+import type { z } from "zod";
+import type { TrueFalseContentSchema } from "../../lib/schemas";
 
-type Content = Extract<ActivityContent, { type: "true_false" }>;
+type Content = z.infer<typeof TrueFalseContentSchema>;
 
 export default function TrueFalse({ content }: { content: Content }) {
   const [index, setIndex] = useState(0);

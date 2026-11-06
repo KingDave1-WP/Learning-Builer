@@ -16,21 +16,21 @@ export default function DemoPage() {
         <h2 className="text-center text-lg font-semibold text-gray-600">
           {sampleMultipleChoice.title}
         </h2>
-        <MultipleChoice content={sampleMultipleChoice} />
+        <MultipleChoice content={sampleMultipleChoice.content} />
       </section>
 
       <section className="mb-10">
         <h2 className="text-center text-lg font-semibold text-gray-600">
           {sampleTrueFalse.title}
         </h2>
-        <TrueFalse content={sampleTrueFalse} />
+        <TrueFalse content={sampleTrueFalse.content} />
       </section>
 
       <section className="mb-10">
         <h2 className="text-center text-lg font-semibold text-gray-600">
           {sampleFlashcards.title}
         </h2>
-        <Flashcards content={sampleFlashcards} />
+        <Flashcards content={sampleFlashcards.content} />
       </section>
     </main>
   );

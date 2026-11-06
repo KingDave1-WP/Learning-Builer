@@ -1,19 +1,22 @@
 import ActivityRenderer from "../../../components/ActivityRenderer";
-import type { ActivityContent } from "../../../lib/schemas";
+import type { GeneratedActivity } from "../../../lib/schemas";
 import {
   sampleMultipleChoice,
   sampleTrueFalse,
   sampleFlashcards,
 } from "../../../lib/sampleData";
 
-// Temporary: swap this for a Supabase fetch (published activities only) later.
-async function getActivity(id: string): Promise<ActivityContent | null> {
-  const samples: Record<string, ActivityContent> = {
+// Temporary: swap this for a Supabase fetch later.
+// Keep the published-only rule when you do (is_published = true).
+async function getActivity(id: string): Promise<GeneratedActivity | null> {
+  const samples: Record<string, GeneratedActivity> = {
     "sample-mc": sampleMultipleChoice,
     "sample-tf": sampleTrueFalse,
     "sample-flash": sampleFlashcards,
   };
-  return samples[id] ?? null;
+  const activity = samples[id] ?? null;
+  if (!activity || !activity.is_published) return null;
+  return activity;
 }
 
 export default async function StudentPage({
@@ -41,7 +44,7 @@ export default async function StudentPage({
         {activity.title}
       </h1>
       <p className="text-center text-gray-600 mt-1 px-4 break-words">
-        {activity.instructions}
+        {activity.content.instructions}
       </p>
       <ActivityRenderer activity={activity} />
     </main>

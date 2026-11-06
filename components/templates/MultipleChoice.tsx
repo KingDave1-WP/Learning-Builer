@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import type { ActivityContent } from "../../lib/schemas";
+import type { z } from "zod";
+import type { MultipleChoiceContentSchema } from "../../lib/schemas";
 
-type Content = Extract<ActivityContent, { type: "multiple_choice" }>;
+type Content = z.infer<typeof MultipleChoiceContentSchema>;
 
 export default function MultipleChoice({ content }: { content: Content }) {
   const [index, setIndex] = useState(0);
