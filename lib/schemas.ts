@@ -1,9 +1,14 @@
 import { z } from "zod";
 
-// 1. Multiple Choice Schema
-export const MultipleChoiceSchema = z.object({
-  type: z.literal("multiple_choice"),
-  title: z.string(),
+export type ActivityType =
+  | "multiple-choice"
+  | "true-false"
+  | "flashcards"
+  | "matching-pairs"
+  | "put-in-order";
+
+// Detailed content schemas for each type
+export const MultipleChoiceContentSchema = z.object({
   instructions: z.string(),
   questions: z.array(
     z.object({
@@ -16,10 +21,7 @@ export const MultipleChoiceSchema = z.object({
   ),
 });
 
-// 2. True or False Schema
-export const TrueFalseSchema = z.object({
-  type: z.literal("true_false"),
-  title: z.string(),
+export const TrueFalseContentSchema = z.object({
   instructions: z.string(),
   statements: z.array(
     z.object({
@@ -31,10 +33,7 @@ export const TrueFalseSchema = z.object({
   ),
 });
 
-// 3. Flashcards Schema
-export const FlashcardsSchema = z.object({
-  type: z.literal("flashcards"),
-  title: z.string(),
+export const FlashcardsContentSchema = z.object({
   instructions: z.string(),
   cards: z.array(
     z.object({
@@ -45,10 +44,7 @@ export const FlashcardsSchema = z.object({
   ),
 });
 
-// 4. Matching Pairs Schema
-export const MatchingPairsSchema = z.object({
-  type: z.literal("matching"),
-  title: z.string(),
+export const MatchingPairsContentSchema = z.object({
   instructions: z.string(),
   pairs: z.array(
     z.object({
@@ -59,10 +55,7 @@ export const MatchingPairsSchema = z.object({
   ),
 });
 
-// 5. Put in Order Schema
-export const PutInOrderSchema = z.object({
-  type: z.literal("order"),
-  title: z.string(),
+export const PutInOrderContentSchema = z.object({
   instructions: z.string(),
   items: z.array(
     z.object({
@@ -73,13 +66,48 @@ export const PutInOrderSchema = z.object({
   ),
 });
 
-// Combined Activity Schema union
+// Full discriminated activity structures matching the DB contract
+export const MultipleChoiceActivitySchema = z.object({
+  title: z.string(),
+  type: z.literal("multiple-choice"),
+  content: MultipleChoiceContentSchema,
+  is_published: z.boolean().default(false),
+});
+
+export const TrueFalseActivitySchema = z.object({
+  title: z.string(),
+  type: z.literal("true-false"),
+  content: TrueFalseContentSchema,
+  is_published: z.boolean().default(false),
+});
+
+export const FlashcardsActivitySchema = z.object({
+  title: z.string(),
+  type: z.literal("flashcards"),
+  content: FlashcardsContentSchema,
+  is_published: z.boolean().default(false),
+});
+
+export const MatchingPairsActivitySchema = z.object({
+  title: z.string(),
+  type: z.literal("matching-pairs"),
+  content: MatchingPairsContentSchema,
+  is_published: z.boolean().default(false),
+});
+
+export const PutInOrderActivitySchema = z.object({
+  title: z.string(),
+  type: z.literal("put-in-order"),
+  content: PutInOrderContentSchema,
+  is_published: z.boolean().default(false),
+});
+
 export const ActivitySchema = z.discriminatedUnion("type", [
-  MultipleChoiceSchema,
-  TrueFalseSchema,
-  FlashcardsSchema,
-  MatchingPairsSchema,
-  PutInOrderSchema,
+  MultipleChoiceActivitySchema,
+  TrueFalseActivitySchema,
+  FlashcardsActivitySchema,
+  MatchingPairsActivitySchema,
+  PutInOrderActivitySchema,
 ]);
 
-export type ActivityContent = z.infer<typeof ActivitySchema>;
+export type GeneratedActivity = z.infer<typeof ActivitySchema>;
