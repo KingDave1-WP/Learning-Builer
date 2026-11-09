@@ -110,4 +110,8 @@ export const ActivitySchema = z.discriminatedUnion("type", [
   PutInOrderActivitySchema,
 ]);
 
+<<<<<<< HEAD
 export type GeneratedActivity = z.infer<typeof ActivitySchema>;
+=======
+export type GeneratedActivity = z.infer<typeof ActivitySchema>;
+>>>>>>> 8d862833599e9e73589bb6716a82b0918dd09bc3
