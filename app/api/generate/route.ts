@@ -1,7 +1,41 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { ActivitySchema, GeneratedActivity } from "@/lib/schemas";
-import { validateActivityContent } from "@/lib/validator";
+
+function validateActivityContent(activity: GeneratedActivity): { isValid: boolean; message?: string } {
+  const inspect = (value: unknown, key = ""): string | undefined => {
+    if (typeof value === "string") {
+      if (/<\/?[a-z][\w:-]*(?:\s[^<>]*)?\/?>/i.test(value)) {
+        return "HTML tags are not allowed in activity content.";
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      if (key === "options" && value.every((item) => typeof item === "string")) {
+        const normalized = value.map((item) => item.trim().toLowerCase());
+        if (new Set(normalized).size !== normalized.length) {
+          return "Answer options must not contain duplicates.";
+        }
+      }
+      for (const item of value) {
+        const error = inspect(item);
+        if (error) return error;
+      }
+      return;
+    }
+
+    if (value && typeof value === "object") {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        const error = inspect(childValue, childKey);
+        if (error) return error;
+      }
+    }
+  };
+
+  const message = inspect(activity.content);
+  return message ? { isValid: false, message } : { isValid: true };
+}
 
 // Initialize the Anthropic client using your server environment variable
 const anthropic = new Anthropic({
