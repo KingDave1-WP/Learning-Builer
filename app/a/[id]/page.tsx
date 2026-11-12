@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import ActivityRenderer from "../../../components/ActivityRenderer";
 import type { GeneratedActivity } from "../../../lib/schemas";
 import {
@@ -19,11 +20,7 @@ async function getActivity(id: string): Promise<GeneratedActivity | null> {
   return activity;
 }
 
-export default async function StudentPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+async function ActivityView({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const activity = await getActivity(id);
 
@@ -48,5 +45,23 @@ export default async function StudentPage({
       </p>
       <ActivityRenderer activity={activity} />
     </main>
+  );
+}
+
+export default function StudentPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gray-50 p-8 text-center">
+          <p className="text-gray-600">Loading activity…</p>
+        </main>
+      }
+    >
+      <ActivityView params={params} />
+    </Suspense>
   );
 }
