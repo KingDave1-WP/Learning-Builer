@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { ActivitySchema, GeneratedActivity } from "@/lib/schemas";
+import { sampleTrueFalse, sampleFlashcards } from "@/lib/sampleData";
 
 function validateActivityContent(activity: GeneratedActivity): { isValid: boolean; message?: string } {
   const inspect = (value: unknown, key = ""): string | undefined => {
@@ -68,6 +69,16 @@ const MOCK_MULTIPLE_CHOICE_ACTIVITY: GeneratedActivity = {
   }
 };
 
+function getFakeActivity(type: string): GeneratedActivity {
+  switch (type) {
+    case "true-false":
+      return { ...sampleTrueFalse, is_published: false };
+    case "flashcards":
+      return { ...sampleFlashcards, is_published: false };
+    default:
+      return MOCK_MULTIPLE_CHOICE_ACTIVITY;
+  }
+}
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -80,7 +91,7 @@ export async function POST(request: Request) {
       console.log("[FAKE MODE] Returning mock activity data matching database contract.");
       return NextResponse.json({
         success: true,
-        data: MOCK_MULTIPLE_CHOICE_ACTIVITY,
+                data: getFakeActivity(type),
         isFakeMode: true,
       });
     }
