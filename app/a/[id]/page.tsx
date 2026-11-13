@@ -1,23 +1,41 @@
 import { Suspense } from "react";
 import ActivityRenderer from "../../../components/ActivityRenderer";
-import type { GeneratedActivity } from "../../../lib/schemas";
+import { ActivitySchema, type GeneratedActivity } from "../../../lib/schemas";
+import { createPublicSupabase } from "../../../lib/supabase";
 import {
   sampleMultipleChoice,
   sampleTrueFalse,
   sampleFlashcards,
 } from "../../../lib/sampleData";
 
-// Temporary: swap this for a Supabase fetch later.
-// Keep the published-only rule when you do (is_published = true).
+const SAMPLES: Record<string, GeneratedActivity> = {
+  "sample-mc": sampleMultipleChoice,
+  "sample-tf": sampleTrueFalse,
+  "sample-flash": sampleFlashcards,
+};
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Published activities only. Students are never logged in.
 async function getActivity(id: string): Promise<GeneratedActivity | null> {
-  const samples: Record<string, GeneratedActivity> = {
-    "sample-mc": sampleMultipleChoice,
-    "sample-tf": sampleTrueFalse,
-    "sample-flash": sampleFlashcards,
-  };
-  const activity = samples[id] ?? null;
-  if (!activity || !activity.is_published) return null;
-  return activity;
+  const sample = SAMPLES[id];
+  if (sample) return sample.is_published ? sample : null;
+
+  if (!UUID.test(id)) return null;
+
+  const supabase = createPublicSupabase();
+  const { data, error } = await supabase
+    .from("activities")
+    .select("title,type,content,is_published")
+    .eq("id", id)
+    .eq("is_published", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const parsed = ActivitySchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 async function ActivityView({ params }: { params: Promise<{ id: string }> }) {

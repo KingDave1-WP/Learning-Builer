@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import ActivityRenderer from "../../components/ActivityRenderer";
 import type { GeneratedActivity } from "../../lib/schemas";
+import { createBrowserSupabase } from "../../lib/supabase";
+import { useRouter } from "next/navigation";
 
 const TYPES = [
   { value: "multiple-choice", label: "Multiple choice" },
@@ -18,6 +21,18 @@ export default function NewActivityPage() {
   const [isFake, setIsFake] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState(false);
+    const router = useRouter();
+
+  useEffect(() => {
+    createBrowserSupabase()
+      .auth.getUser()
+      .then(({ data }) => {
+        if (!data.user) router.replace("/login");
+      });
+  }, [router]);
 
   async function generate() {
     if (!prompt.trim()) {
@@ -26,6 +41,8 @@ export default function NewActivityPage() {
     }
     setLoading(true);
     setError(null);
+    setSaved(false);
+    setNeedsLogin(false);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -49,10 +66,45 @@ export default function NewActivityPage() {
     }
   }
 
+  async function save() {
+    if (!activity) return;
+    setSaving(true);
+    setError(null);
+    setNeedsLogin(false);
+
+    const supabase = createBrowserSupabase();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setSaving(false);
+      setNeedsLogin(true);
+      setError("Please log in to save your activity.");
+      return;
+    }
+
+    const { error: insertError } = await supabase.from("activities").insert({
+      title: activity.title,
+      type: activity.type,
+      content: activity.content,
+      is_published: false,
+    });
+
+    setSaving(false);
+    if (insertError) {
+      setError("Could not save the activity. Please try again.");
+      return;
+    }
+    setSaved(true);
+  }
+
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="mx-auto max-w-2xl">
-        <h1 className="text-2xl font-bold text-gray-900">New activity</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">New activity</h1>
+          <Link href="/dashboard" className="text-sm text-blue-700 underline">
+            My activities
+          </Link>
+        </div>
 
         <p className="mt-6 text-sm font-medium text-gray-700">1. Pick a type</p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -97,7 +149,12 @@ export default function NewActivityPage() {
 
         {error && (
           <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">
-            {error}
+            {error}{" "}
+            {needsLogin && (
+              <Link href="/login" className="underline">
+                Log in
+              </Link>
+            )}
           </p>
         )}
 
@@ -108,20 +165,37 @@ export default function NewActivityPage() {
               Your activity will appear here.
             </p>
           ) : (
-            <div className="mt-2 rounded-2xl border border-gray-200 bg-white py-4">
-              {isFake && (
-                <p className="px-4 text-xs text-gray-500">
-                  Fake mode: showing sample content.
+            <>
+              <div className="mt-2 rounded-2xl border border-gray-200 bg-white py-4">
+                {isFake && (
+                  <p className="px-4 text-xs text-gray-500">
+                    Fake mode: showing sample content.
+                  </p>
+                )}
+                <h3 className="px-4 text-center text-xl font-bold break-words">
+                  {activity.title}
+                </h3>
+                <p className="px-4 text-center text-gray-600 break-words">
+                  {activity.content.instructions}
                 </p>
-              )}
-              <h3 className="px-4 text-center text-xl font-bold break-words">
-                {activity.title}
-              </h3>
-              <p className="px-4 text-center text-gray-600 break-words">
-                {activity.content.instructions}
-              </p>
-              <ActivityRenderer key={version} activity={activity} />
-            </div>
+                <ActivityRenderer key={version} activity={activity} />
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={save}
+                  disabled={saving || saved}
+                  className="min-h-[44px] rounded-xl bg-green-600 px-6 py-3 text-white disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : saved ? "Saved ✓" : "Save activity"}
+                </button>
+                {saved && (
+                  <Link href="/dashboard" className="text-sm text-blue-700 underline">
+                    Go to my activities
+                  </Link>
+                )}
+              </div>
+            </>
           )}
         </section>
       </div>
