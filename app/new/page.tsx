@@ -44,11 +44,21 @@ export default function NewActivityPage() {
     setSaved(false);
     setNeedsLogin(false);
     try {
+              const { data: sessionData } = await createBrowserSupabase().auth.getSession();
+      const token = sessionData.session?.access_token;
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ prompt, type, currentActivity: null }),
       });
+      if (res.status === 401) {
+        setNeedsLogin(true);
+        setError("Please log in to generate activities.");
+        return;
+      }
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
         setError(
