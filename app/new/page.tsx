@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ActivityRenderer from "../../components/ActivityRenderer";
 import type { GeneratedActivity } from "../../lib/schemas";
 import { createBrowserSupabase } from "../../lib/supabase";
-import { useRouter } from "next/navigation";
 
 const TYPES = [
   { value: "multiple-choice", label: "Multiple choice" },
@@ -13,7 +13,55 @@ const TYPES = [
   { value: "flashcards", label: "Flashcards" },
 ];
 
+const GENERIC_ERROR =
+  "Sorry, that didn't work. Please try again with a slightly different request.";
+
+type ChatMessage = { role: "teacher" | "assistant"; text: string };
+
+type RequestResult =
+  | { ok: true; data: GeneratedActivity; isFake: boolean }
+  | { ok: false; message: string; needsLogin?: boolean };
+
+async function requestActivity(body: object): Promise<RequestResult> {
+  try {
+    const { data: sessionData } =
+      await createBrowserSupabase().auth.getSession();
+    const token = sessionData.session?.access_token;
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) {
+      return {
+        ok: false,
+        message: "Please log in to generate activities.",
+        needsLogin: true,
+      };
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) {
+      return { ok: false, message: json?.error ?? GENERIC_ERROR };
+    }
+    return {
+      ok: true,
+      data: json.data as GeneratedActivity,
+      isFake: Boolean(json.isFakeMode),
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "Could not reach the server. Check your connection and try again.",
+    };
+  }
+}
+
 export default function NewActivityPage() {
+  const router = useRouter();
+
   const [type, setType] = useState("multiple-choice");
   const [prompt, setPrompt] = useState("");
   const [activity, setActivity] = useState<GeneratedActivity | null>(null);
@@ -21,10 +69,16 @@ export default function NewActivityPage() {
   const [isFake, setIsFake] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [changeText, setChangeText] = useState("");
+  const [refining, setRefining] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
-    const router = useRouter();
 
   useEffect(() => {
     createBrowserSupabase()
@@ -41,45 +95,74 @@ export default function NewActivityPage() {
     }
     setLoading(true);
     setError(null);
-    setSaved(false);
+    setActionError(null);
     setNeedsLogin(false);
-    try {
-              const { data: sessionData } = await createBrowserSupabase().auth.getSession();
-      const token = sessionData.session?.access_token;
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ prompt, type, currentActivity: null }),
-      });
-      if (res.status === 401) {
-        setNeedsLogin(true);
-        setError("Please log in to generate activities.");
-        return;
-      }
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.success) {
-        setError(
-          "Sorry, that didn't work. Please try again with a slightly different request."
-        );
-        return;
-      }
-      setActivity(json.data as GeneratedActivity);
-      setIsFake(Boolean(json.isFakeMode));
-      setVersion((v) => v + 1);
-    } catch {
-      setError("Could not reach the server. Check your connection and try again.");
-    } finally {
-      setLoading(false);
+
+    const result = await requestActivity({ prompt, type, currentActivity: null });
+    setLoading(false);
+
+    if (!result.ok) {
+      setError(result.message);
+      setNeedsLogin(Boolean(result.needsLogin));
+      return;
     }
+    setActivity(result.data);
+    setIsFake(result.isFake);
+    setVersion((v) => v + 1);
+    setSaved(false);
+    setSavedId(null);
+    setChat([]);
+  }
+
+  async function refine() {
+    const change = changeText.trim();
+    if (!activity || !change) return;
+    setRefining(true);
+    setActionError(null);
+    setNeedsLogin(false);
+
+    const result = await requestActivity({
+      prompt: change,
+      type: activity.type,
+      currentActivity: activity,
+    });
+    setRefining(false);
+
+    if (!result.ok) {
+      // Keep the previous version on screen.
+      setActionError(result.message);
+      setNeedsLogin(Boolean(result.needsLogin));
+      return;
+    }
+
+    if (result.isFake) {
+      setChat((prev) => [
+        ...prev,
+        { role: "teacher", text: change },
+        {
+          role: "assistant",
+          text: "Fake mode is on, so the AI didn't change anything.",
+        },
+      ]);
+      setChangeText("");
+      return;
+    }
+
+    setChat((prev) => [
+      ...prev,
+      { role: "teacher", text: change },
+      { role: "assistant", text: "Done. I've updated the activity above." },
+    ]);
+    setActivity(result.data);
+    setVersion((v) => v + 1);
+    setChangeText("");
+    setSaved(false);
   }
 
   async function save() {
     if (!activity) return;
     setSaving(true);
-    setError(null);
+    setActionError(null);
     setNeedsLogin(false);
 
     const supabase = createBrowserSupabase();
@@ -87,22 +170,44 @@ export default function NewActivityPage() {
     if (!userData.user) {
       setSaving(false);
       setNeedsLogin(true);
-      setError("Please log in to save your activity.");
+      setActionError("Please log in to save your activity.");
       return;
     }
 
-    const { error: insertError } = await supabase.from("activities").insert({
-      title: activity.title,
-      type: activity.type,
-      content: activity.content,
-      is_published: false,
-    });
+    if (savedId) {
+      const { error: updateError } = await supabase
+        .from("activities")
+        .update({
+          title: activity.title,
+          content: activity.content,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", savedId);
+      setSaving(false);
+      if (updateError) {
+        setActionError("Could not save your changes. Please try again.");
+        return;
+      }
+      setSaved(true);
+      return;
+    }
 
+    const { data, error: insertError } = await supabase
+      .from("activities")
+      .insert({
+        title: activity.title,
+        type: activity.type,
+        content: activity.content,
+        is_published: false,
+      })
+      .select("id")
+      .single();
     setSaving(false);
-    if (insertError) {
-      setError("Could not save the activity. Please try again.");
+    if (insertError || !data) {
+      setActionError("Could not save the activity. Please try again.");
       return;
     }
+    setSavedId(data.id);
     setSaved(true);
   }
 
@@ -156,6 +261,11 @@ export default function NewActivityPage() {
         >
           {loading ? "Generating…" : "Generate"}
         </button>
+        {loading && (
+          <p className="mt-2 text-sm text-gray-500">
+            Writing your activity… this can take up to a minute.
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-700">
@@ -171,9 +281,7 @@ export default function NewActivityPage() {
         <section className="mt-8">
           <h2 className="text-lg font-semibold text-gray-900">Preview</h2>
           {!activity ? (
-            <p className="mt-2 text-gray-600">
-              Your activity will appear here.
-            </p>
+            <p className="mt-2 text-gray-600">Your activity will appear here.</p>
           ) : (
             <>
               <div className="mt-2 rounded-2xl border border-gray-200 bg-white py-4">
@@ -191,16 +299,93 @@ export default function NewActivityPage() {
                 <ActivityRenderer key={version} activity={activity} />
               </div>
 
+              <section className="mt-6">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Ask for changes
+                </h2>
+                <p className="text-sm text-gray-600">
+                  For example: &quot;make question 3 harder&quot; or &quot;add
+                  five more&quot;.
+                </p>
+
+                {chat.length > 0 && (
+                  <ul aria-live="polite" className="mt-3 space-y-2">
+                    {chat.map((m, i) => (
+                      <li
+                        key={i}
+                        className={`rounded-xl px-3 py-2 text-sm break-words ${
+                          m.role === "teacher"
+                            ? "ml-8 bg-blue-50 text-blue-900"
+                            : "mr-8 border border-gray-200 bg-white text-gray-800"
+                        }`}
+                      >
+                        {m.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="mt-3 flex gap-2">
+                  <label htmlFor="change" className="sr-only">
+                    Describe the change
+                  </label>
+                  <input
+                    id="change"
+                    value={changeText}
+                    onChange={(e) => setChangeText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && refine()}
+                    disabled={refining}
+                    placeholder="make question 3 harder"
+                    className="min-h-[44px] flex-1 rounded-xl border-2 border-gray-300 bg-white px-3 text-gray-900 disabled:opacity-50"
+                  />
+                  <button
+                    onClick={refine}
+                    disabled={refining || !changeText.trim()}
+                    className="min-h-[44px] rounded-xl bg-blue-600 px-5 text-white disabled:opacity-50"
+                  >
+                    {refining ? "Updating…" : "Send"}
+                  </button>
+                </div>
+                {refining && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Updating your activity… this can take up to a minute.
+                  </p>
+                )}
+              </section>
+
+              {actionError && (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-xl bg-red-50 p-3 text-red-700"
+                >
+                  {actionError}{" "}
+                  {needsLogin && (
+                    <Link href="/login" className="underline">
+                      Log in
+                    </Link>
+                  )}
+                </p>
+              )}
+
               <div className="mt-4 flex items-center gap-3">
                 <button
                   onClick={save}
                   disabled={saving || saved}
                   className="min-h-[44px] rounded-xl bg-green-600 px-6 py-3 text-white disabled:opacity-50"
                 >
-                  {saving ? "Saving…" : saved ? "Saved ✓" : "Save activity"}
+                  {saving
+                    ? "Saving…"
+                    : saved
+                    ? "Saved ✓"
+                    : savedId
+                    ? "Save changes"
+                    : "Save activity"}
                 </button>
                 {saved && (
-                  <Link href="/dashboard" className="text-sm text-blue-700 underline">
+                  <Link
+                    href="/dashboard"
+                    className="text-sm text-blue-700 underline"
+                  >
                     Go to my activities
                   </Link>
                 )}

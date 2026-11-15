@@ -152,10 +152,10 @@ async function ask(
 
   const geminiKey = process.env.GEMINI_API_KEY;
   // If the first model is overloaded or unavailable, try the next one.
-  const models = [
-    process.env.GEMINI_MODEL || "gemini-3.8-flash",
-    "gemini-flash-lite-latest",
+    const models = [
+    process.env.GEMINI_MODEL || "gemini-flash-lite-latest",
     "gemini-flash-latest",
+    "gemini-3.8-flash",
   ];
 
   let lastError = "";
@@ -185,7 +185,7 @@ async function ask(
             })),
             generationConfig,
           }),
-          signal: AbortSignal.timeout(Math.min(30000, remaining)),
+          signal: AbortSignal.timeout(Math.min(20000, remaining)),
         }
       );
       if (res.ok) {
