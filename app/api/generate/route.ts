@@ -130,7 +130,11 @@ function check(raw: string, type: string): Checked {
   return { ok: true, data: result.data };
 }
 
-async function ask(system: string, messages: Message[]): Promise<string> {
+async function ask(
+  system: string,
+  messages: Message[],
+  deadline: number
+): Promise<string> {
   // Claude if an Anthropic key is set, otherwise Gemini.
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
@@ -146,32 +150,42 @@ async function ask(system: string, messages: Message[]): Promise<string> {
       .join("");
   }
 
-    const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
   // If the first model is overloaded or unavailable, try the next one.
   const models = [
     process.env.GEMINI_MODEL || "gemini-3.8-flash",
     "gemini-flash-lite-latest",
     "gemini-flash-latest",
   ];
-  const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: system }] },
-    contents: messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-    generationConfig: { responseMimeType: "application/json" },
-  });
 
   let lastError = "";
   for (const model of models) {
+    const remaining = deadline - Date.now();
+    if (remaining < 5000) break;
+
+    // Gemini 3 models think a lot by default, which is slow. Ask for less.
+    const generationConfig: Record<string, unknown> = {
+      responseMimeType: "application/json",
+    };
+    if (model.startsWith("gemini-3")) {
+      generationConfig.thinkingConfig = { thinkingLevel: "low" };
+    }
+
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body,
-          signal: AbortSignal.timeout(20000),
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: messages.map((m) => ({
+              role: m.role === "assistant" ? "model" : "user",
+              parts: [{ text: m.content }],
+            })),
+            generationConfig,
+          }),
+          signal: AbortSignal.timeout(Math.min(30000, remaining)),
         }
       );
       if (res.ok) {
@@ -182,14 +196,14 @@ async function ask(system: string, messages: Message[]): Promise<string> {
       const detail = await res.text().catch(() => "");
       lastError = `Gemini ${res.status} (${model}): ${detail.slice(0, 200)}`;
       console.warn(`[generate] ${lastError}`);
-      // A bad key or bad request won't be fixed by another model.
-      if (![404, 429, 500, 503].includes(res.status)) break;
+      // A rejected key won't be fixed by another model.
+      if (![400, 404, 429, 500, 503].includes(res.status)) break;
     } catch (err) {
       lastError = `Gemini request failed (${model}): ${String(err)}`;
       console.warn(`[generate] ${lastError}`);
     }
   }
-  throw new Error(lastError || "Gemini request failed");
+  throw new Error(lastError || "Gemini did not answer in time");
 }
 
 export async function POST(request: Request) {
@@ -233,9 +247,10 @@ export async function POST(request: Request) {
       { role: "user", content: userMessage(prompt, currentActivity) },
     ];
 
+        const deadline = Date.now() + 55000;
     // One automatic retry: tell the AI what was wrong and ask again.
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const reply = await ask(systemPrompt(type), messages);
+            const reply = await ask(systemPrompt(type), messages, deadline);
       const result = check(reply, type);
       if (result.ok) {
         return NextResponse.json({
