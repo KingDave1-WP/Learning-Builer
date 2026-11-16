@@ -67,3 +67,33 @@ export const sampleFlashcards: Sample<"flashcards"> = {
     ],
   },
 };
+
+export const sampleMatching: Sample<"matching-pairs"> = {
+  title: "Parts of a plant cell",
+  type: "matching-pairs",
+  is_published: true,
+  content: {
+    instructions: "Match each part to what it does.",
+    pairs: [
+      { id: "m1", left: "Chloroplast", right: "Makes food using sunlight" },
+      { id: "m2", left: "Cell wall", right: "Keeps the cell rigid" },
+      { id: "m3", left: "Vacuole", right: "Stores water" },
+      { id: "m4", left: "Nucleus", right: "Controls the cell" },
+    ],
+  },
+};
+
+export const sampleOrdering: Sample<"put-in-order"> = {
+  title: "Steps of photosynthesis",
+  type: "put-in-order",
+  is_published: true,
+  content: {
+    instructions: "Put the steps in the right order.",
+    items: [
+      { id: "o1", text: "Sunlight hits the leaf and chlorophyll absorbs it", correctOrderIndex: 0 },
+      { id: "o2", text: "Roots take in water and leaves take in carbon dioxide", correctOrderIndex: 1 },
+      { id: "o3", text: "Light energy turns them into glucose", correctOrderIndex: 2 },
+      { id: "o4", text: "Oxygen is released into the air", correctOrderIndex: 3 },
+    ],
+  },
+};

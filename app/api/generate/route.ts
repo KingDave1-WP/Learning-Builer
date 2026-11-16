@@ -6,6 +6,8 @@ import {
   sampleMultipleChoice,
   sampleTrueFalse,
   sampleFlashcards,
+  sampleMatching,
+  sampleOrdering,
 } from "@/lib/sampleData";
 import { createPublicSupabase } from "@/lib/supabase";
 export const maxDuration = 60;
@@ -40,6 +42,10 @@ function getFakeActivity(type: string): GeneratedActivity {
       return { ...sampleTrueFalse, is_published: false };
     case "flashcards":
       return { ...sampleFlashcards, is_published: false };
+    case "matching-pairs":
+      return { ...sampleMatching, is_published: false };
+    case "put-in-order":
+      return { ...sampleOrdering, is_published: false };
     default:
       return { ...sampleMultipleChoice, is_published: false };
   }
@@ -86,6 +92,14 @@ function sanityCheck(activity: GeneratedActivity): string | null {
   };
   if (tooLong(activity.content)) {
     return "Some text is longer than 400 characters. Shorten it.";
+  }
+    if (activity.type === "put-in-order") {
+    const indexes = activity.content.items
+      .map((i) => i.correctOrderIndex)
+      .sort((a, b) => a - b);
+    if (!indexes.every((v, i) => v === i)) {
+      return "Each item needs a unique correctOrderIndex, from 0 up to the number of items minus 1.";
+    }
   }
   return null;
 }

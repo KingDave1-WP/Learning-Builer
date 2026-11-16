@@ -11,6 +11,8 @@ const TYPES = [
   { value: "multiple-choice", label: "Multiple choice" },
   { value: "true-false", label: "True / False" },
   { value: "flashcards", label: "Flashcards" },
+  { value: "matching-pairs", label: "Matching pairs" },
+  { value: "put-in-order", label: "Put in order" },
 ];
 
 const GENERIC_ERROR =
